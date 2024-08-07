@@ -1,6 +1,5 @@
 package io.github.xxfast.kstore.file
 
-
 import io.github.xxfast.kstore.Codec
 import io.github.xxfast.kstore.file.format.KStoreFormat
 import kotlinx.io.buffered
@@ -26,13 +25,14 @@ public class FileCodec<T : @Serializable Any>(
 ) : Codec<T> {
   override suspend fun decode(): T? =
     try {
-      format.decodeFromSource(serializer, SystemFileSystem.source(file).buffered())
-    } catch (e: FileNotFoundException) {
+      SystemFileSystem.source(file).buffered().use { format.decodeFromSource(serializer, it) }
+    } catch (_: FileNotFoundException) {
       null
     }
 
   override suspend fun encode(value: T?) {
-    if (value != null) format.encodeToSink(serializer, value, SystemFileSystem.sink(file).buffered())
-    else SystemFileSystem.delete(file)
+    if (value != null) {
+      SystemFileSystem.sink(file).buffered().use { format.encodeToSink(serializer, value, it) }
+    } else SystemFileSystem.delete(file, false)
   }
 }

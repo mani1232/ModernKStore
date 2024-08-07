@@ -10,12 +10,11 @@ import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
-import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.serializer
 import kotlinx.serialization.json.io.decodeFromSource as decode
 import kotlinx.serialization.json.io.encodeToSink as encode
+import kotlinx.serialization.serializer
 
 /**
  * Creates a store with a versioned encoder and decoder
@@ -60,28 +59,25 @@ public class VersionedCodec<T : @Serializable Any>(
 
   override suspend fun decode(): T? =
     try {
-      json.decode(serializer, SystemFileSystem.source(file).buffered())
-    } catch (e: SerializationException) {
-      val previousVersion: Int =
-        if (SystemFileSystem.exists(versionPath)) json.decode(
-          Int.serializer(),
-          SystemFileSystem.source(versionPath).buffered()
-        )
-        else 0
+      SystemFileSystem.source(file).buffered().use { json.decode(serializer, it) }
+    } catch (_: SerializationException) {
+      val previousVersion: Int = if (SystemFileSystem.exists(versionPath)) {
+        SystemFileSystem.source(versionPath).buffered().use { json.decode(it) }
+      } else 0
 
-      val data: JsonElement = json.decode(SystemFileSystem.source(file).buffered())
+      val data: JsonElement = SystemFileSystem.source(file).buffered().use { json.decode(it) }
       migration(previousVersion, data)
-    } catch (e: FileNotFoundException) {
+    } catch (_: FileNotFoundException) {
       null
     }
 
   override suspend fun encode(value: T?) {
     if (value != null) {
-      SystemFileSystem.sink(versionPath).buffered().use { json.encode(Int.serializer(), version, it) }
+      SystemFileSystem.sink(versionPath).buffered().use { json.encode(version, it) }
       SystemFileSystem.sink(file).buffered().use { json.encode(serializer, value, it) }
     } else {
-      SystemFileSystem.delete(versionPath)
-      SystemFileSystem.delete(file)
+      SystemFileSystem.delete(versionPath, false)
+      SystemFileSystem.delete(file, false)
     }
   }
 }
